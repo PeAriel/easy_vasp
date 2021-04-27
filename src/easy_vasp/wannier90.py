@@ -10,6 +10,7 @@ from matplotlib.collections import LineCollection
 from copy import deepcopy
 import matplotlib.colors as colors
 
+
 def cart2frac(coordinates, lattice):
     lattice = np.array(lattice)
     coordinates = np.array(coordinates)
@@ -20,6 +21,7 @@ def cart2frac(coordinates, lattice):
         for i, coordinate in enumerate(coordinates):
             fracs[i] = np.linalg.solve(lattice.T, coordinate)
     return fracs.tolist()
+
 
 def _print_xyz_error():
     print("Could not find wannier90_centers.xyz file!!!!")
@@ -109,11 +111,12 @@ def get_recip_lattice(lattice):
     :return: reciprocal lattice vectors. recip[i] = \vec{b_i}
     """
     lattice = lattice
+    vol = np.dot(lattice[0], np.cross(lattice[1], lattice[2]))
     recip = [[], [], []]
 
-    recip[0] = 2 * pi * (np.cross(lattice[1], lattice[2])) / np.dot(lattice[0], np.cross(lattice[1], lattice[2]))
-    recip[1] = 2 * pi * (np.cross(lattice[2], lattice[0])) / np.dot(lattice[1], np.cross(lattice[2], lattice[0]))
-    recip[2] = 2 * pi * (np.cross(lattice[0], lattice[1])) / np.dot(lattice[2], np.cross(lattice[0], lattice[1]))
+    recip[0] = 2 * pi * (np.cross(lattice[1], lattice[2])) / vol
+    recip[1] = 2 * pi * (np.cross(lattice[2], lattice[0])) / vol
+    recip[2] = 2 * pi * (np.cross(lattice[0], lattice[1])) / vol
 
     for i in range(3):
         recip[i] = recip[i].tolist()
@@ -152,9 +155,9 @@ class Wannier90Centers:
     def get_phase_matrix(self, k):
         """
         :param k: k point vector at which we evaluate the phases
-        :return: exp( 1j*k \cdot (rn - rm) )
+        :return: exp( 1j*k \cdot (r_n - r_m) )
         """
-        phase_mat = np.zeros(self.ncenters ** 2, dtype=complex).reshape(self.ncenters, self.ncenters)
+        phase_mat = np.zeros((self.ncenters, self.ncenters), dtype=complex)
         for i in range(self.ncenters):
             for j in range(i + 1, self.ncenters):
                 phase_mat[i, j] = np.exp(1j * (np.dot(k, self.centers[i]) - np.dot(k, self.centers[j])))
@@ -370,9 +373,12 @@ class Wannier90Hr:
          For example: for 3 d orbitals and 5 p orbitals, input: ['d'] * 3 + ['p'] * 5. important! no need to multiply
          by 2 for spinors, the spin tag takes that into account.
         :param spin: boolean. takes spinors into account (by default set to true)
+
+        p1 was added to account for different p orbital (e.g in Bi2Se3). More orbitals can be added easily
         """
         basis = []
-        indicator = [[2, 1], [3, -1], [5, -1], [7, -1], [11, 1], [13, 1], [17, 1], [19, 1], [23, 1]]
+        indicator = [[2, 1], [3, -1], [5, -1], [7, -1], [11, 1], [13, 1], [17, 1], [19, 1], [23, 1],
+                     [29, -1], [31, -1], [37, -1]]
         for i, orb in enumerate(projections):
             if 's' in orb:
                 basis.append(2)
@@ -386,6 +392,10 @@ class Wannier90Hr:
                 basis.append(17)
                 basis.append(19)
                 basis.append(23)
+            elif 'p1' in orb:
+                basis.append(29)
+                basis.append(31)
+                basis.append(37)
 
         basis = np.array([basis])
         basis = basis.T@basis
@@ -396,34 +406,33 @@ class Wannier90Hr:
 
         wannier_centers = Wannier90Centers(os.path.dirname(self.file_path) + get_slash() + 'wannier90_centres.xyz')
         frac_centers_tmp = cart2frac(wannier_centers.centers, self.unit_cell_cart)
-        if spin:
-            frac_centers = np.array([[round(i, 3) for i in frac_centers_tmp[j]] for j in range(len(frac_centers_tmp) // 2)])
-        else:
-            frac_centers = np.array([[round(i, 3) for i in center] for center in frac_centers_tmp])
-
-        if spin:
-            inversion_op = np.zeros([wannier_centers.ncenters // 2, wannier_centers.ncenters // 2], dtype=int)
-        else:
-            inversion_op = np.zeros([wannier_centers.ncenters, wannier_centers.ncenters], dtype=int)
-
+        ncenters = wannier_centers.ncenters
+        frac_centers = np.array([[round(i, 3) for i in frac_centers_tmp[j]] for j in range(ncenters)])
         tol = 1e-3
+
         if spin:
-            ncenters = wannier_centers.ncenters // 2
+            inversion_op_up = np.zeros((ncenters // 2, ncenters // 2), dtype=int)
+            inversion_op_down = np.zeros((ncenters // 2, ncenters // 2), dtype=int)
+            for iup in range(ncenters // 2):
+                idn = iup + (ncenters // 2)
+                for jup in range(ncenters // 2):
+                    jdn = jup + (ncenters // 2)
+                    if np.linalg.norm((-frac_centers[iup] + 1) % 1 - frac_centers[jup]) < tol:
+                        inversion_op_up[iup, jup] = 1
+                    if np.linalg.norm((-frac_centers[idn] + 1) % 1 - frac_centers[jdn]) < tol:
+                        inversion_op_down[iup, jup] = 1  # the indices here are indeed OK!
+            inversion_op_up = np.multiply(inversion_op_up, basis)
+            inversion_op_down = np.multiply(inversion_op_down, basis)
+            return np.kron([[1, 0], [0, 0]], inversion_op_up) + np.kron([[0, 0], [0, 1]], inversion_op_down)
+
         else:
-            ncenters = wannier_centers.ncenters
-        for i in range(ncenters):
-            for j in range(ncenters):
-                if np.linalg.norm((-frac_centers[i] + 1) % 1 - frac_centers[j]) < tol:
-                    inversion_op[i, j] = 1
-        for i in inversion_op:
-            if i.sum() == 0:
-                print('No inversion')
+            inversion_op = np.zeros((ncenters, ncenters), dtype=int)
+            for i in range(ncenters):
+                for j in range(ncenters):
+                    if np.linalg.norm((-frac_centers[i] + 1) % 1 - frac_centers[j]) < tol:
+                        inversion_op[i, j] = 1
 
-        inversion_op = np.multiply(inversion_op, basis)
-        if spin:
-            inversion_op = np.kron(np.eye(2), inversion_op)
-
-        return inversion_op
+            return np.multiply(inversion_op, basis)
 
     def get_k_inversion_operator(self, projections, kpoint, is_cart=None):
         """
@@ -442,6 +451,9 @@ class Wannier90Hr:
         for k in kpoint:
             if type(k) == list:
                 is_list = True
+                break
+            else:
+                break
 
         if is_list:
             parity = np.zeros((len(kpoint), dim, dim), dtype=complex)
