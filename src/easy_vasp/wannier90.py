@@ -471,6 +471,8 @@ class Wannier90Hr:
                     for j in range(dim):
                         parity[idx, i, j] = np.vdot(k_ham_eignvecs[:, i],
                                                real_inversion @ k_ham_eignvecs[:, j])
+
+            return parity
         else:
             if is_cart is None:
                 kpoint = frac2cart(kpoint, self.recip_lattice)
