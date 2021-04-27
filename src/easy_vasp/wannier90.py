@@ -343,7 +343,7 @@ class Wannier90Hr:
         # diagonalize using all coordinates
         if sites == ('all' or 'All'):
             for i, k in enumerate(kvecs):
-                k_ham = np.zeros(dim ** 2, dtype=complex).reshape(dim, dim)
+                k_ham = np.zeros((dim, dim), dtype=complex)
                 phase_mat = wannier_centers.get_phase_matrix(k)
                 for int_coordinates, real_ham in self.real_hamiltonian.items():
                     lat_vec = ints2vec(self.unit_cell_cart, [int(n) for n in int_coordinates.split()])
