@@ -380,19 +380,19 @@ class Wannier90Hr:
         indicator = [[2, 1], [3, -1], [5, -1], [7, -1], [11, 1], [13, 1], [17, 1], [19, 1], [23, 1],
                      [29, -1], [31, -1], [37, -1]]
         for i, orb in enumerate(projections):
-            if 's' in orb:
+            if orb == 's':
                 basis.append(2)
-            elif 'p' in orb:
+            elif orb == 'p':
                 basis.append(3)
                 basis.append(5)
                 basis.append(7)
-            elif 'd' in orb:
+            elif orb == 'd':
                 basis.append(11)
                 basis.append(13)
                 basis.append(17)
                 basis.append(19)
                 basis.append(23)
-            elif 'p1' in orb:
+            elif orb == 'p1':
                 basis.append(29)
                 basis.append(31)
                 basis.append(37)
