@@ -399,9 +399,9 @@ class Wannier90Hr:
 
         basis = np.array([basis])
         basis = basis.T@basis
-        for i in range(9):
+        for i in range(12):
             basis[np.where(basis == indicator[i][0] ** 2)] = indicator[i][1]
-            for j in range(9):
+            for j in range(12):
                 basis[np.where(basis == indicator[i][0] * indicator[j][0])] = 0
 
         wannier_centers = Wannier90Centers(os.path.dirname(self.file_path) + get_slash() + 'wannier90_centres.xyz')
