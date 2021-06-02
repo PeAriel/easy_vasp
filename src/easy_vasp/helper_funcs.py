@@ -49,3 +49,31 @@ def smooth(vec, step):
     for i in range(step - 1, len(vec), step):
         vec2[i - (step - 1):i + 1] = vec[i - (step - 1):i + 1].sum() / step
     return vec2
+
+def cart2frac(coordinates, lattice):
+    lattice = np.array(lattice)
+    coordinates = np.array(coordinates)
+    if coordinates.shape == (3,):
+        return np.linalg.solve(lattice.T, coordinates).tolist()
+    else:
+        fracs = np.zeros(len(coordinates) * 3).reshape(len(coordinates), 3)
+        for i, coordinate in enumerate(coordinates):
+            fracs[i] = np.linalg.solve(lattice.T, coordinate)
+    return fracs.tolist()
+
+def gauge_fix(vec):
+    """
+    fixes the gauge of a vector or a list of vectors (returns a numpy array)
+    """
+    vec = np.array(vec, dtype=complex)
+    if type(vec[0]) == np.ndarray:
+        for i in range(len(vec)):
+            vec[i] = vec[i] * np.exp(-1j * np.angle(vec[i].sum()))
+            if vec[i].sum() < 0:
+                vec[i] = -vec[i]
+    else:
+        vec = vec * np.exp(-1j * np.angle(vec.sum()))
+        if vec.sum() < 0:
+            vec = -vec
+
+    return vec
