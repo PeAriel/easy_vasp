@@ -13,6 +13,8 @@ class Poscar:
     """
     def __init__(self, file_path):
         self.file_path = file_path
+        self.lattice = None
+        self.cart_or_frac = None
         self.upper_part = None                  # upper part of the original file to stitch.
         self.middle_part = None                 # middle part of the original file to stitch.
         self.last_part = None                   # last part of the original file to stitch.
@@ -20,8 +22,6 @@ class Poscar:
         self.unit_cell = None                   # unit cell coordinate matrix.
         self.atom_number = None                 # a list with the number of atoms for each species.
         self.atom_name = None                   # a list with the atoms name for each species.
-        self.atom1_coordinates = None           # atom 1 coordinates matrix.
-        self.atom2_coordinates = None           # atom 2 coordinates matrix.
         self.atoms_coordinates = None           # whole coordinates matrix.
         self.new_data = None                    # new data file to save.
         self._parse()
@@ -43,14 +43,6 @@ class Poscar:
             atoms = data_mat[6]
             self.atom_number = [int(x) for x in atoms]
 
-            atom1_coordinates = data_mat[8:8+self.atom_number[0]]
-            self.atom1_coordinates = [[float(elem) for elem in row] for row in atom1_coordinates]
-            self.atom1_coordinates = sorted(self.atom1_coordinates, key=operator.itemgetter(2))
-
-            atom2_coordinates = data_mat[8+self.atom_number[0]:8+self.atom_number[0]+self.atom_number[1]]
-            self.atom2_coordinates = [[float(elem) for elem in row] for row in atom2_coordinates]
-            self.atom2_coordinates = sorted(self.atom2_coordinates, key=operator.itemgetter(2))
-
             atoms_coordinates = filter(None, data_mat[8::])
             self.atoms_coordinates = [[float(elem) for elem in row] for row in atoms_coordinates]
 
@@ -58,34 +50,35 @@ class Poscar:
             for i, frac_point in enumerate(self.atoms_coordinates):
                 self.cart_coordinates[i] = frac2cart(frac_point, self.unit_cell)
 
-    def save_new_file(self, output_path='POSCAR'):
-        # Stitch all the fields into a file.
+            if 'd' in data_mat[7][0].lower():
+                self.cart_or_frac = 'frac'
+            else:
+                self.cart_or_frac = 'cart'
 
-        new_file = ''
-        for row in self.upper_part:
-            tmp = '\t'.join(row) + '\n'
-            new_file += tmp
+    def get_inversion_centers(self):
+        natoms = len(self.atoms_coordinates)
+        coordinates = self.atoms_coordinates
+        if self.cart_or_frac == 'cart':
+            coordinates = cart2frac(coordinates, self.unit_cell)
+        inv_centers = [[[0 for _ in range(3)] for _ in range(natoms)] for _ in range(natoms)]
+        for i in range(natoms):
+            for j in range(natoms):
+                for k in range(3):
+                    inv_centers[i][j][k] = round(coordinates[i][k] + coordinates[j][k], 3)
 
-        for row in self.unit_cell:
-            tmp = '\t'.join([str(elem) for elem in row]) + '\n'
-            new_file += tmp
+        inv_centers = (np.array(inv_centers) + 1) % 1
 
-        new_file += '\t'.join(self.middle_part) + '\n'
-
-        new_file += '\t'.join([str(elem) for elem in self.atom_number]) + '\n'
-
-        new_file += '\t'.join(self.last_part) + '\n'
-
-        for row in self.atom1_coordinates:
-            tmp = '\t'.join([str(elem) for elem in row]) + '\n'
-            new_file += tmp
-
-        for row in self.atom2_coordinates:
-            tmp = '\t'.join([str(elem) for elem in row]) + '\n'
-            new_file += tmp
-
-        with open(output_path, 'w') as f:
-            f.write(new_file)
+        common_centers = []
+        for i in range(natoms):
+            for j in range(natoms):
+                for k in range(natoms):
+                    if np.linalg.norm(coordinates[k] - inv_centers[i][j]) < 1e-3:
+                        common_center = coordinates[k]
+                        if k == natoms - 1:
+                            common_centers.append(common_center)
+                    else:
+                        break
+        return np.array(common_centers)
 
 
 class Kpoints:
@@ -215,7 +208,6 @@ class Procar:
                             axis_idx += 1
 
             return ordered_procar
-            #             ''' NOT FINISHED YET!''' NOT WORKING!!
 
         else:
             print('Non-collinear PROCAR. \nStarting to reorder the data')
@@ -258,10 +250,11 @@ class Procar:
 
 
 class Outcar:
-    def __init__(self, file_path):
+    def __init__(self, file_path, skip=None):
         self.file_path = file_path
         self.folder_path = os.path.dirname(file_path)
         self.number_of_bands = None
+        self.skip_kpoints = skip
         self.spin_polarized = None
         self.collinear = None
         self.number_of_kpoints = None
@@ -271,7 +264,8 @@ class Outcar:
         self.fermi_energy = None
         self.band_energy_vectors = []  # row n is E_n(k).
         self._parse()
-        self.ticks = [self.kpoints_vector[i] for i in self.cart_sympoints_indices]
+        if self.skip_kpoints is None:
+            self.ticks = [self.kpoints_vector[i] for i in self.cart_sympoints_indices]
 
         os.chdir(os.path.dirname(__file__))
         self.path = os.getcwd()
@@ -296,6 +290,8 @@ class Outcar:
                 if line_num == dims_line:
                     dimensions = line.split()
                     self.number_of_kpoints = int(dimensions[3])
+                    if self.skip_kpoints:
+                        self.number_of_kpoints -= self.skip_kpoints
                     self.number_of_bands = int(dimensions[14])
 
                 match_fermi = re.match(efermi_expr, line)
@@ -322,6 +318,8 @@ class Outcar:
             # Also note that those methods are used instead of just .readlines() to avoid the \n at the end.
             lines = f.read().splitlines()
             del lines[0:2]
+            if self.skip_kpoints:
+                del lines[:(3 + self.number_of_bands) * self.skip_kpoints]
             del lines[(3 + self.number_of_bands) * self.number_of_kpoints::]
 
             for n in range(1, self.number_of_bands + 1):
@@ -334,21 +332,22 @@ class Outcar:
                     self.direct_lattice_vectors[i][j] = float(lat_tmp[i][j])
                     self.reciprocal_lattice_vectors[i][j] = float(lat_tmp[i][j + 3])
 
-            kpoints_path = os.path.dirname(self.file_path) + get_slash() + 'KPOINTS'
-            kpoints = Kpoints(kpoints_path)
-            self.cart_sympoints_indices = kpoints.frac_sympoints_indices
+            if self.skip_kpoints is None:
+                kpoints_path = os.path.dirname(self.file_path) + get_slash() + 'KPOINTS'
+                kpoints = Kpoints(kpoints_path)
+                self.cart_sympoints_indices = kpoints.frac_sympoints_indices
 
-            self.cart_sympoints = [[0 for _ in range(3)] for _ in range(kpoints.npoints)]
-            for i, sympoint in enumerate(kpoints.frac_sympoints):
-                self.cart_sympoints[i] = frac2cart(sympoint, self.reciprocal_lattice_vectors, twopi=True)
+                self.cart_sympoints = [[0 for _ in range(3)] for _ in range(kpoints.npoints)]
+                for i, sympoint in enumerate(kpoints.frac_sympoints):
+                    self.cart_sympoints[i] = frac2cart(sympoint, self.reciprocal_lattice_vectors, twopi=True)
 
-            self.kpoints_vector = np.array([])
-            tmp = np.zeros(kpoints.pps)
-            for i in range(0, kpoints.nsegments):
-                last_tmp = tmp[-1]
-                tmp = kpoint_segment(self.cart_sympoints[2 * i], self.cart_sympoints[2 * i + 1],
-                                     kpoints.pps) + last_tmp
-                self.kpoints_vector = np.append(self.kpoints_vector, tmp)
+                self.kpoints_vector = np.array([])
+                tmp = np.zeros(kpoints.pps)
+                for i in range(0, kpoints.nsegments):
+                    last_tmp = tmp[-1]
+                    tmp = kpoint_segment(self.cart_sympoints[2 * i], self.cart_sympoints[2 * i + 1],
+                                         kpoints.pps) + last_tmp
+                    self.kpoints_vector = np.append(self.kpoints_vector, tmp)
 
         incar_path = os.path.dirname(self.file_path) + get_slash() + 'INCAR'
         with open(incar_path, 'r') as f:
@@ -458,6 +457,7 @@ class Outcar:
         fig.set_size_inches(7, 6)
         # plt.show()
         return fig, ax
+
 
 
 class ScfOutcar:
