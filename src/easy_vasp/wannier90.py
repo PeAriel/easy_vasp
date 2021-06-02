@@ -11,41 +11,6 @@ from matplotlib.collections import LineCollection
 from copy import deepcopy
 import matplotlib.colors as colors
 
-def _real_hamiltonain_alternating_spin_select(real_hamiltonian, specie='up'):
-    dim = len(real_hamiltonian.get('0 0 0'))
-    spin_ham = {}
-    for key, val in real_hamiltonian.items():
-        tmp_ham = []
-        if specie == 'up':
-            for i in range(0, dim, 2):
-                tmp = val[i]
-                tmp_ham += [tmp[0::2]]
-            spin_ham[key] = tmp_ham
-        else:
-            for i in range(1, dim, 2):
-                tmp = val[i]
-                tmp_ham += [tmp[1::2]]
-            spin_ham[key] = tmp_ham
-    return spin_ham
-
-
-def _real_hamiltonain_block_spin_select(real_hamiltonian, specie='up'):
-    """
-    cuts the real Hamiltonain obtained from the real_hamiltonain attribute. it returns a dictionary similarly
-    """
-    dim = len(real_hamiltonian.get('0 0 0')) // 2
-    spin_ham = {}
-    for key, val in real_hamiltonian.items():
-        tmp_ham = []
-        for i in range(dim):
-            tmp = val[i]
-            if specie == 'up':
-                tmp_ham += [tmp[0:dim]]
-            else:
-                tmp_ham += [tmp[dim:(dim * 2)]]
-        spin_ham[key] = tmp_ham
-    return spin_ham
-
 
 def _print_xyz_error():
     print("Could not find wannier90_centers.xyz file!!!!")
@@ -176,22 +141,10 @@ class Wannier90Centers:
                     tmp.pop(0)
                     self.centers += [[float(j) for j in tmp]]
 
-    def spin_ordered_centers(self):
-        """
-        transform the basis from block of up-down spins to alternating up-down spins
-        """
-        spin_ordered_centers = np.zeros((self.ncenters, 3), dtype=float)
-        for i in range(self.ncenters // 2):
-            spin_ordered_centers[2 * i] = self.centers[i]
-            spin_ordered_centers[2 * i + 1] = self.centers[i + (self.ncenters // 2)]
 
-        return spin_ordered_centers
-
-    def get_phase_matrix(self, k, spin=None, spin_order=''):
+    def get_phase_matrix(self, k):
         """
         :param k: k point vector at which we evaluate the phases
-        :param alter: specifies if the Hamiltonain is ordered is alternating fashion or block. Takes values -
-         'alternating', 'blocks'. if spin is not needed it may be left as the default.
         :return: exp( 1j*k \cdot (r_n - r_m) )
         """
         phase_mat = np.zeros((self.ncenters, self.ncenters), dtype=complex)
@@ -202,30 +155,6 @@ class Wannier90Centers:
         phase_mat += phase_mat.conj().T
         for i in range(self.ncenters):
             phase_mat[i, i] = 1
-
-        if spin == 'up':
-            phase_mat_up = []
-            if 'block' in spin_order:
-                for i in range(self.ncenters//2):
-                    tmp = phase_mat[i]
-                    phase_mat_up += [tmp[0:self.ncenters // 2]]
-                return np.array(phase_mat_up)
-            if 'alter' in spin_order:
-                for i in range(0, self.ncenters, 2):
-                    tmp = phase_mat[i]
-                    phase_mat_up += [tmp[0::2]]
-                return np.array(phase_mat_up)
-        if spin == 'down':
-            phase_mat_down = []
-            if 'block' in spin_order:
-                for i in range(self.ncenters):
-                    phase_mat_down += [phase_mat[i][(self.ncenters // 2):self.ncenters]]
-                return phase_mat_down
-            if 'alter' in spin_order:
-                for i in range(1, self.ncenters, 2):
-                    tmp = phase_mat[i]
-                    phase_mat_down += [tmp[1::2]]
-                return np.array(phase_mat_down)
 
         return phase_mat
 
@@ -316,8 +245,8 @@ class Wannier90Hr:
 
                     line_vec = [float(i) for i in line.split()]
                     # note that here we divide the the multiplicity of each matrix element
-                    real = round(line_vec[5], 3)
-                    imag = round(line_vec[6], 3)
+                    real = line_vec[5]
+                    imag = line_vec[6]
                     ham_row += [(real + 1j * imag) / self.multiplicity_vec[multiplicity_idx]]
 
                     if line_vec[3] == self.num_wan:
@@ -405,6 +334,7 @@ class Wannier90Hr:
                     lat_vec = ints2vec(self.unit_cell_cart, [int(n) for n in int_coordinates.split()])
                     k_ham += np.array(np.multiply(real_ham, phase_mat)) * exp(1j * np.dot(k, lat_vec))
                 eigs[i], eigvecs[i] = np.linalg.eigh(k_ham)
+
         else:
             # the list of coordinates case
             ncoordinates = len(sites)
@@ -456,27 +386,17 @@ class Wannier90Hr:
         frac_centers_tmp = cart2frac(wannier_centers.centers, self.unit_cell_cart)
         ncenters = wannier_centers.ncenters
         frac_centers = np.array([[round(i, 3) for i in frac_centers_tmp[j]] for j in range(ncenters)])
+        for i, cen in enumerate(frac_centers):
+            frac_centers[i] = (frac_centers[i] + 1) % 1
         tol = 1e-2
 
         if spin:
 
-            # This was the procedure to extend the basis for up-down-up-down-...
-            # spin_basis = []
-            # for i in range(len(basis)):
-            #     spin_basis.append(basis[i])
-            #     spin_basis.append(deepcopy(basis[i]))
-            #     spin_basis[2 * i + 1][1] = 'down'
-            # basis = spin_basis
+            for i in range(len(basis)):
+                basis.append(deepcopy(basis[i]))
+            for i in range(len(basis) // 2, len(basis)):
+                basis[i][1] = 'down'
 
-
-            # This was the procedure to extend the basis for big up-down blocks
-            # for i in range(len(basis)):
-            #     basis.append(deepcopy(basis[i]))
-            # for i in range(len(basis) // 2, len(basis)):
-            #     basis[i][1] = 'down'
-
-            # We treat only(!) the upper spin block
-            ncenters //= 2
             inversion_op = np.zeros((ncenters, ncenters), dtype=int)
             for i in range(ncenters):
                 for j in range(ncenters):
@@ -496,7 +416,7 @@ class Wannier90Hr:
 
             return inversion_op
 
-    def get_k_inversion_operator(self, projections, kpoint, spin=None, is_cart=None):
+    def get_k_inversion_eigs(self, projections, kpoint, spin=None, is_cart=None):
         """
         get the k-space inversion operator. same description as for he real space except for the kpoint tag.
         :param kpoint : list, or nested list of kpoints in fractional coordinate (by default) or cartesian
@@ -506,8 +426,6 @@ class Wannier90Hr:
         :param is_cart: determines if kpoint is given is fractional (default or cartesian coordinates)
         """
         dim = len(self.real_hamiltonian[list(self.real_hamiltonian.keys())[0]])
-        if spin:
-            dim //= 2
         wannier_centers = Wannier90Centers(os.path.dirname(self.file_path) + get_slash() + 'wannier90_centres.xyz')
         real_inversion = self.get_real_inversion_operator(projections, spin)
 
@@ -541,35 +459,22 @@ class Wannier90Hr:
         else:
             if is_cart is None:
                 kpoint = frac2cart(kpoint, self.recip_lattice)
-            if spin:
-                phase_mat = wannier_centers.get_phase_matrix(kpoint, spin, spin_order='block')
-                r_ham = _real_hamiltonain_block_spin_select(self.real_hamiltonian, spin)
-            else:
-                r_ham = self.real_hamiltonian
-                phase_mat = wannier_centers.get_phase_matrix(kpoint)
+            phase_mat = wannier_centers.get_phase_matrix(kpoint)
             k_inversion = np.zeros((dim, dim), dtype=complex)
             k_ham = np.zeros((dim, dim), dtype=complex)
-            for int_coordinates, real_ham in r_ham.items():
+            for int_coordinates, real_ham in self.real_hamiltonian.items():
                 lat_vec = ints2vec(self.unit_cell_cart, [int(n) for n in int_coordinates.split()])
                 k_ham += np.array(np.multiply(real_ham, phase_mat)) * exp(1j * np.dot(kpoint, lat_vec))
                 k_inversion += np.array(np.multiply(real_inversion, phase_mat)) * exp(1j * np.dot(kpoint, lat_vec))
             k_eigs, k_ham_eignvecs = np.linalg.eigh(k_ham)
 
-            k_parity_eigs, k_parity_eignvecs = np.linalg.eigh(k_inversion)
-            print(k_eigs)
-            print(k_parity_eigs)
+            # k_parity_eigs, k_parity_eignvecs = np.linalg.eigh(k_inversion)
+            # print(k_eigs)
+            # print(k_parity_eigs)
 
-            # parity_eignvecs = gauge_fix(parity_eignvecs.T).T
-            # k_ham_eignvecs = gauge_fix(k_ham_eignvecs.T).T
 
-            overlaps = np.zeros((dim, dim), dtype=complex)
+            parity = np.zeros((dim), dtype=complex)
             for i in range(dim):
-                for j in range(dim):
-                    overlaps[i, j] = np.vdot(k_ham_eignvecs[:, i], k_parity_eignvecs[:, j])
+                    parity[i] = np.vdot(k_ham_eignvecs[:, i], real_inversion @ k_ham_eignvecs[:, i])
 
-            parity = np.zeros((dim, dim), dtype=complex)
-            for i in range(dim):
-                for j in range(dim):
-                    parity[i, j] = np.vdot(k_ham_eignvecs[:, i], real_inversion @ k_ham_eignvecs[:, j])
-
-        return parity
+        return parity.real
