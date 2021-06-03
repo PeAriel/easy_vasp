@@ -250,10 +250,11 @@ class Procar:
 
 
 class Outcar:
-    def __init__(self, file_path, skip=None):
+    def __init__(self, file_path, skip=None, mbj=False):
         self.file_path = file_path
         self.folder_path = os.path.dirname(file_path)
         self.number_of_bands = None
+        self.mbj = mbj
         self.skip_kpoints = skip
         self.spin_polarized = None
         self.collinear = None
@@ -324,6 +325,8 @@ class Outcar:
 
             for n in range(1, self.number_of_bands + 1):
                 nth_line = lines[n + 1::self.number_of_bands + 3]
+                if self.mbj:
+                    nth_line = lines[n + 2::self.number_of_bands + 3]
                 nth_energies = [float(entry.split()[1]) for entry in nth_line]
                 self.band_energy_vectors.append(nth_energies)
 
