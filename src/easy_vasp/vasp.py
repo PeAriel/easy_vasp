@@ -56,29 +56,37 @@ class Poscar:
                 self.cart_or_frac = 'cart'
 
     def get_inversion_centers(self):
-        natoms = len(self.atoms_coordinates)
         coordinates = self.atoms_coordinates
         if self.cart_or_frac == 'cart':
             coordinates = cart2frac(coordinates, self.unit_cell)
-        inv_centers = [[[0 for _ in range(3)] for _ in range(natoms)] for _ in range(natoms)]
-        for i in range(natoms):
-            for j in range(natoms):
-                for k in range(3):
-                    inv_centers[i][j][k] = round(coordinates[i][k] + coordinates[j][k], 3)
 
-        inv_centers = (np.array(inv_centers) + 1) % 1
+        dim = len(coordinates)
 
-        common_centers = []
-        for i in range(natoms):
-            for j in range(natoms):
-                for k in range(natoms):
-                    if np.linalg.norm(coordinates[k] - inv_centers[i][j]) < 1e-3:
-                        common_center = coordinates[k]
-                        if k == natoms - 1:
-                            common_centers.append(common_center)
-                    else:
+        coordinates = np.array(coordinates)
+        centers_mat = []
+        for i, R_i in enumerate(coordinates):
+            row = []
+            for j, R_j in enumerate(coordinates):
+                r_i = np.array([round(n, 5) for n in R_i])
+                r_j = np.array([round(n, 5) for n in R_j])
+                row += [((r_i + r_j) + 1) % 1]
+                if j == (dim - 1):
+                    centers_mat += [row]
+
+        inversion_centers = []
+        tol = 1e-3
+        for i in range(dim):
+            count = 0
+            for m in range(1, dim):
+                for n in range(dim):
+                    if (np.linalg.norm(centers_mat[0][i] - centers_mat[m][n]) < tol):
+                        center = centers_mat[0][i]
+                        count += 1
+                        if count >= (dim - 1):
+                            inversion_centers.append(center.tolist())
                         break
-        return np.array(common_centers)
+
+        return inversion_centers
 
 
 class Kpoints:
@@ -374,7 +382,8 @@ class Outcar:
                    wannier_hr_path=None,
                    slabek_path=None,
                    fermi_shift=None,
-                   title=None):
+                   title=None,
+                   axs=None):
         """
         :param n: optional. by default it plots all bands.
         :param sympoints: list of high symmetry point. Currently supports only equally spaced grid.
@@ -412,7 +421,11 @@ class Outcar:
                 slabek = SlabEk(slabek_path)
                 slab_bands = np.array(slabek.band_energy_vectors) + self.fermi_energy
 
-        fig, ax = plt.subplots()
+        if axs is None:
+            fig, ax = plt.subplots()
+        else:
+            ax = axs
+
         efplot = [ef] * len(self.kpoints_vector)
         ax.plot(self.kpoints_vector, efplot, 'k', linestyle='--', linewidth=1)
         if wannier_band_path:
@@ -457,9 +470,11 @@ class Outcar:
         if title:
             ax.set_title(title, fontsize=16)
 
-        fig.set_size_inches(7, 6)
+        if axs is None:
+            fig.set_size_inches(7, 6)
+            return fig, ax
         # plt.show()
-        return fig, ax
+        return ax
 
 
 
