@@ -69,22 +69,26 @@ class Poscar:
             for j, R_j in enumerate(coordinates):
                 r_i = np.array([round(n, 5) for n in R_i])
                 r_j = np.array([round(n, 5) for n in R_j])
-                row += [((r_i + r_j) + 1) % 1]
+                row += [(r_i + r_j) / 2]
                 if j == (dim - 1):
                     centers_mat += [row]
 
         inversion_centers = []
         tol = 1e-3
         for i in range(dim):
-            count = 0
-            for m in range(1, dim):
-                for n in range(dim):
-                    if (np.linalg.norm(centers_mat[0][i] - centers_mat[m][n]) < tol):
-                        center = centers_mat[0][i]
-                        count += 1
-                        if count >= (dim - 1):
-                            inversion_centers.append(center.tolist())
-                        break
+            for j in range(i + 1, dim):
+                shifted_coordinates = (coordinates + centers_mat[i][j] + 1) % 1
+                inverted_coordinates = (-shifted_coordinates + 1) % 1
+                count = 0
+                for inverted_coordinate in inverted_coordinates:
+                    for shifted_coordinate in shifted_coordinates:
+                        if np.linalg.norm(inverted_coordinate - shifted_coordinate) < tol:
+                            count += 1
+                            break
+                    if count == dim:
+                        if centers_mat[i][j].tolist() not in inversion_centers:
+                            inversion_centers.append(centers_mat[i][j].tolist())
+                        count = 0
 
         return inversion_centers
 
