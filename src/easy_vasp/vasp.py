@@ -343,6 +343,10 @@ class Outcar:
             # Also note that those methods are used instead of just .readlines() to avoid the \n at the end.
             lines = f.read().splitlines()
             del lines[0:2]
+            if self.spin_polarized:
+                # note that we take only the up spin component!
+                # choosing between up or down spin functionality may be incorporated later
+                del lines[0:2]
             if self.skip_kpoints:
                 del lines[:(3 + self.number_of_bands) * self.skip_kpoints]
             del lines[(3 + self.number_of_bands) * self.number_of_kpoints::]
