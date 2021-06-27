@@ -118,6 +118,10 @@ class Kpoints:
                         del sympoints[i][-1]
             self.frac_sympoints = [[float(j) for j in sympoints[i]] for i in range(len(sympoints))]
             self.frac_sympoints = list(filter(None, self.frac_sympoints))
+            if 'C' in mat[3].lower():
+                poscar_path = os.path.dirname(self.file_path) + get_slash() + 'POSCAR'
+                poscar = Poscar(poscar_path)
+                self.frac_sympoints = cart2frac(self.frac_sympoints, poscar.unit_cell)
 
         self.frac_sympoints_indices = [0] + [(i*self.pps - 1) for i in range(1, self.nsegments + 1)]
 
@@ -327,6 +331,14 @@ class Outcar:
                     lat_tmp.append(line.split())
                 line_num += 1
 
+                match_spin = re.match(spin_expr, line)
+                if match_spin:
+                    tmp = int(match_spin.group(1))
+                    if tmp in [0, 1, 11]:
+                        self.spin_polarized = False
+                    elif tmp == 2:
+                        self.spin_polarized = True
+
             # note that now the first line here is the next line of the loop above!
             # Also note that those methods are used instead of just .readlines() to avoid the \n at the end.
             lines = f.read().splitlines()
@@ -364,20 +376,6 @@ class Outcar:
                                          kpoints.pps) + last_tmp
                     self.kpoints_vector = np.append(self.kpoints_vector, tmp)
 
-        incar_path = os.path.dirname(self.file_path) + get_slash() + 'INCAR'
-        with open(incar_path, 'r') as f:
-            for line in f:
-                match_spin = re.match(spin_expr, line)
-                if match_spin:
-                    tmp = int(match_spin.group(1))
-                    if tmp in [0, 1, 11]:
-                        self.spin_polarized = False
-                        break
-                    elif tmp == 2:
-                        self.spin_polarized = True
-                        break
-            if match_spin is None:
-                self.spin_polarized = False
 
     def plot_bands(self, n='All',
                    sympoints=None,
