@@ -77,3 +77,16 @@ def gauge_fix(vec):
             vec = -vec
 
     return vec
+
+def ints2vec(unit_cell, integers):
+    """
+    :param unit_cell:
+    :param integers: list of 3 integers [n1, n2, n3] such that R = n1a1 + n2a2 + n3a3
+    :return: a lattice vector as a numpy array
+    """
+    unit_cell = np.array(unit_cell)
+    integers = np.array(integers)
+    r = np.zeros(3)
+    for i in range(3):
+        r += integers[i] * unit_cell[i]
+    return np.array(r)
