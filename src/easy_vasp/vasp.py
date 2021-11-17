@@ -44,7 +44,7 @@ class Poscar:
             self.atom_number = [int(x) for x in atoms]
 
             atoms_coordinates = filter(None, data_mat[8::])
-            self.atoms_coordinates = [[float(elem) for elem in row] for row in atoms_coordinates]
+            self.atoms_coordinates = [[float(elem) for elem in row[0:3]] for row in atoms_coordinates]
 
             self.cart_coordinates = [None for _ in range(len(self.atoms_coordinates))]
             for i, frac_point in enumerate(self.atoms_coordinates):
