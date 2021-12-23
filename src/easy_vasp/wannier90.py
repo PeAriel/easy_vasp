@@ -474,6 +474,28 @@ class Wannier90Hr:
                 self.real_hamiltonian[site] = np.array(self.real_hamiltonian[site])
                 self.real_hamiltonian[site] *= (1 - magnitude)
 
+    def add_2Dstrain_new(self, dir, mag):
+        dir = np.array(dir)
+        dir = dir / np.linalg.norm(dir)
+        frac_centers = np.array(cart2frac(self.wannier_centers.centers, self.unit_cell_cart))
+        for key, real_ham in self.real_hamiltonian.items():
+            coord = np.array([int(i) for i in key.split()])
+            for n in range(self.num_wan):
+                for m in range(self.num_wan):
+                    rnm = frac_centers[m] - frac_centers[n]
+                    self.real_hamiltonian[key][n][m] *= (1 - mag * np.abs(np.dot(dir, rnm + coord)) / np.linalg.norm(rnm + coord + 1e-3))
+
+    def add_2Dstrain_cart(self, dir, mag):
+        dir = np.array(dir)
+        dir = dir / np.linalg.norm(dir)
+        self.wannier_centers.centers = np.array(self.wannier_centers.centers)
+        for key, real_ham in self.real_hamiltonian.items():
+            coord = np.array(ints2vec(self.unit_cell_cart, [int(i) for i in key.split()]))
+            for n in range(self.num_wan):
+                for m in range(self.num_wan):
+                    rnm = self.wannier_centers.centers[m] - self.wannier_centers.centers[n]
+                    self.real_hamiltonian[key][n][m] *= (1 - mag * np.abs(np.dot(dir, rnm + coord)) / np.linalg.norm(rnm + coord + 1e-3))
+
 
     def add_strain_exp(self, magnitude):
         n11 = 0

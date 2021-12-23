@@ -468,7 +468,7 @@ class Outcar:
         if energy_range:
             ax.set_ylim(energy_range[0], energy_range[1])
 
-        ax.set_ylabel('$E(k)$', fontsize=16)
+        ax.set_ylabel('Energy (eV)', fontsize=16)
         ax.set_xlim(0, max(self.kpoints_vector))
         for axis in ['top', 'bottom', 'left', 'right']:
             ax.spines[axis].set_linewidth(2)
